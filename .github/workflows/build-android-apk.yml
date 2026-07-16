@@ -45,7 +45,7 @@ jobs:
           npx expo prebuild --platform android --no-install
 
       # Patch react-native-get-sms-android to replace deprecated jcenter() with mavenCentral()
-      # We run this right before compiling to ensure no intermediate install commands overwrite our patch.
+      # Fresh clean trigger build step
       - name: Patch react-native-get-sms-android library
         run: |
           node -e "
