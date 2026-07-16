@@ -38,6 +38,11 @@ jobs:
           cd mobile
           npm ci
 
+      # Patch react-native-get-sms-android to replace deprecated jcenter() with mavenCentral()
+      - name: Patch react-native-get-sms-android library
+        run: |
+          sed -i 's/jcenter()/mavenCentral()/g' mobile/node_modules/react-native-get-sms-android/android/build.gradle
+
       # 5. Run Expo Prebuild (Generates native Android folders and injects permissions)
       - name: Generate Native Android Code (Expo Prebuild)
         run: |
