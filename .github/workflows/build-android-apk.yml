@@ -38,7 +38,14 @@ jobs:
           cd mobile
           npm ci
 
+      # 5. Run Expo Prebuild (Generates native Android folders and injects permissions)
+      - name: Generate Native Android Code (Expo Prebuild)
+        run: |
+          cd mobile
+          npx expo prebuild --platform android --no-install
+
       # Patch react-native-get-sms-android to replace deprecated jcenter() with mavenCentral()
+      # We run this right before compiling to ensure no intermediate install commands overwrite our patch.
       - name: Patch react-native-get-sms-android library
         run: |
           node -e "
@@ -50,12 +57,6 @@ jobs:
             console.log('Successfully patched build.gradle:');
             console.log(content);
           "
-
-      # 5. Run Expo Prebuild (Generates native Android folders and injects permissions)
-      - name: Generate Native Android Code (Expo Prebuild)
-        run: |
-          cd mobile
-          npx expo prebuild --platform android --no-install
 
       # 6. Build Release APK using Gradle
       - name: Build Android Release APK
