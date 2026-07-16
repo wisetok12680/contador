@@ -57,6 +57,62 @@ export default function Home() {
   );
   const [simulationResult, setSimulationResult] = useState<string | null>(null);
 
+  // Load data from Backend Sync API
+  const loadFromBackend = async (token: string) => {
+    setIsSynced(false);
+    try {
+      const res = await fetch(`/api/sync?token=${token}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.transactions) {
+          setTransactions(data.transactions);
+          localStorage.setItem('fm_transactions', JSON.stringify(data.transactions));
+        }
+        if (data.mappings) {
+          setMappings(data.mappings);
+          localStorage.setItem('fm_mappings', JSON.stringify(data.mappings));
+        }
+        if (data.creditBase !== undefined) {
+          setCreditBase(data.creditBase);
+          localStorage.setItem('fm_credit_base', data.creditBase.toString());
+        }
+        setIsSynced(true);
+      } else {
+        console.warn('Backend sync returned error status:', res.status);
+        triggerSyncMock();
+      }
+    } catch (e) {
+      console.error('Failed to load from backend:', e);
+      triggerSyncMock();
+    }
+  };
+
+  // Push changes to Backend Sync API
+  const pushToBackend = async (txs: Transaction[], maps: UPIMapping[], base: number, tokenStr: string) => {
+    if (!tokenStr) return;
+    setIsSynced(false);
+    try {
+      const res = await fetch('/api/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${tokenStr}`
+        },
+        body: JSON.stringify({
+          transactions: txs,
+          mappings: maps,
+          creditBase: base,
+          lastSync: new Date().toISOString()
+        })
+      });
+      if (res.ok) {
+        setIsSynced(true);
+      }
+    } catch (err) {
+      console.error('Failed to push to backend:', err);
+    }
+  };
+
   // Initialize with Mock Data if nothing in localStorage
   useEffect(() => {
     const savedBase = localStorage.getItem('fm_credit_base');
@@ -64,8 +120,13 @@ export default function Home() {
     const savedMappings = localStorage.getItem('fm_mappings');
     const savedToken = localStorage.getItem('fm_sync_token');
 
+    let tokenVal = '';
+
     if (savedBase) setCreditBase(parseFloat(savedBase));
-    if (savedToken) setSyncToken(savedToken);
+    if (savedToken) {
+      tokenVal = savedToken;
+      setSyncToken(tokenVal);
+    }
 
     // Initial load check
     let currentTransactions: Transaction[] = [];
@@ -135,20 +196,31 @@ export default function Home() {
       setTransactions(currentTransactions);
       localStorage.setItem('fm_transactions', JSON.stringify(currentTransactions));
     }
+
+    if (tokenVal) {
+      loadFromBackend(tokenVal);
+    }
   }, []);
 
   // Save to localStorage when state changes
   const updateTransactions = (newTxs: Transaction[]) => {
     setTransactions(newTxs);
     localStorage.setItem('fm_transactions', JSON.stringify(newTxs));
-    // Simulate Sync
-    triggerSyncMock();
+    if (syncToken) {
+      pushToBackend(newTxs, mappings, creditBase, syncToken);
+    } else {
+      triggerSyncMock();
+    }
   };
 
   const updateMappings = (newMaps: UPIMapping[]) => {
     setMappings(newMaps);
     localStorage.setItem('fm_mappings', JSON.stringify(newMaps));
-    triggerSyncMock();
+    if (syncToken) {
+      pushToBackend(transactions, newMaps, creditBase, syncToken);
+    } else {
+      triggerSyncMock();
+    }
   };
 
   const triggerSyncMock = () => {
@@ -215,13 +287,21 @@ export default function Home() {
   const handleUpdateCreditBase = (val: number) => {
     setCreditBase(val);
     localStorage.setItem('fm_credit_base', val.toString());
-    triggerSyncMock();
+    if (syncToken) {
+      pushToBackend(transactions, mappings, val, syncToken);
+    } else {
+      triggerSyncMock();
+    }
   };
 
   const handleSaveSyncToken = (val: string) => {
     setSyncToken(val);
     localStorage.setItem('fm_sync_token', val);
-    triggerSyncMock();
+    if (val) {
+      loadFromBackend(val);
+    } else {
+      triggerSyncMock();
+    }
   };
 
   // Inline editing for mappings
