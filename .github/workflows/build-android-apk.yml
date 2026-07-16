@@ -1,0 +1,59 @@
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+jobs:
+  build:
+    name: Build Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout repository
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. Set up Node.js
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: 'mobile/package-lock.json'
+
+      # 3. Set up Java JDK 17 (Required for modern React Native / Gradle builds)
+      - name: Set up Java JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # 4. Install dependencies for the Mobile App
+      - name: Install Dependencies
+        run: |
+          cd mobile
+          npm ci
+
+      # 5. Run Expo Prebuild (Generates native Android folders and injects permissions)
+      - name: Generate Native Android Code (Expo Prebuild)
+        run: |
+          cd mobile
+          npx expo prebuild --platform android --no-install
+
+      # 6. Build Release APK using Gradle
+      - name: Build Android Release APK
+        run: |
+          cd mobile/android
+          ./gradlew assembleRelease --no-daemon
+
+      # 7. Upload the compiled APK as a GitHub Action Artifact
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FlowFinance-Release-APK
+          path: mobile/android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 7 # Kept for 7 days
