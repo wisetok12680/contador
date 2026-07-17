@@ -53,6 +53,9 @@ export default function App() {
   const [syncUrl, setSyncUrl] = useState<string>('');
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [isOnlineSynced, setIsOnlineSynced] = useState<boolean>(true);
+  const [isCloudSyncing, setIsCloudSyncing] = useState<boolean>(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   // Form Inputs
   const [newUpi, setNewUpi] = useState<string>('');
@@ -73,28 +76,49 @@ export default function App() {
       const savedUrl = await AsyncStorage.getItem('fm_sync_url');
       const savedTx = await AsyncStorage.getItem('fm_transactions');
       const savedMappings = await AsyncStorage.getItem('fm_mappings');
+      const savedLastSynced = await AsyncStorage.getItem('fm_last_synced_at');
 
-      if (savedBase) setCreditBase(parseFloat(savedBase));
-      if (savedToken) setSyncToken(savedToken);
-      if (savedUrl) setSyncUrl(savedUrl);
+      let currentBase = 5000;
+      let currentToken = '';
+      let currentUrl = '';
+      let currentTxs: Transaction[] = [];
+      let currentMaps: UPIMapping[] = [];
+
+      if (savedBase) {
+        currentBase = parseFloat(savedBase);
+        setCreditBase(currentBase);
+      }
+      if (savedToken) {
+        currentToken = savedToken;
+        setSyncToken(currentToken);
+      }
+      if (savedUrl) {
+        currentUrl = savedUrl;
+        setSyncUrl(currentUrl);
+      }
+      if (savedLastSynced) {
+        setLastSyncedAt(savedLastSynced);
+      }
 
       if (savedMappings) {
-        setMappings(JSON.parse(savedMappings));
+        currentMaps = JSON.parse(savedMappings);
+        setMappings(currentMaps);
       } else {
-        const defaultMappings = [
+        currentMaps = [
           { upiId: '9876543210@paytm', friendlyName: 'Grocery Shop' },
           { upiId: '123456', friendlyName: 'Cafe Coffee Day' },
           { upiId: 'swiggy@upi', friendlyName: 'Swiggy Food' },
         ];
-        setMappings(defaultMappings);
-        await AsyncStorage.setItem('fm_mappings', JSON.stringify(defaultMappings));
+        setMappings(currentMaps);
+        await AsyncStorage.setItem('fm_mappings', JSON.stringify(currentMaps));
       }
 
       if (savedTx) {
-        setTransactions(JSON.parse(savedTx));
+        currentTxs = JSON.parse(savedTx);
+        setTransactions(currentTxs);
       } else {
         const now = new Date();
-        const defaultTx: Transaction[] = [
+        currentTxs = [
           {
             id: '1',
             amount: 5000,
@@ -114,8 +138,12 @@ export default function App() {
             raw: 'Your A/c x1234 is debited by Rs.250.00 on 15-07-26. Info: UPI-9876543210@paytm.'
           }
         ];
-        setTransactions(defaultTx);
-        await AsyncStorage.setItem('fm_transactions', JSON.stringify(defaultTx));
+        setTransactions(currentTxs);
+        await AsyncStorage.setItem('fm_transactions', JSON.stringify(currentTxs));
+      }
+
+      if (currentUrl && currentToken) {
+        pullAndMergeFromCloud(currentTxs, currentMaps, currentBase, currentUrl, currentToken);
       }
     } catch (e) {
       console.log('Failed to load data:', e);
@@ -143,20 +171,25 @@ export default function App() {
   };
 
   // Vercel PC Sync API Communication
-  const triggerCloudSync = async (txs: Transaction[], maps: UPIMapping[]) => {
-    if (!syncUrl || !syncToken) return;
-    setIsOnlineSynced(false);
+  const pushToCloud = async (
+    txs: Transaction[],
+    maps: UPIMapping[],
+    base: number = creditBase,
+    url: string = syncUrl,
+    token: string = syncToken
+  ) => {
+    if (!url || !token) return;
     try {
-      const response = await fetch(`${syncUrl}/api/sync`, {
+      const response = await fetch(`${url}/api/sync`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${syncToken}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           transactions: txs,
           mappings: maps,
-          creditBase,
+          creditBase: base,
           lastSync: new Date().toISOString()
         })
       });
@@ -164,15 +197,81 @@ export default function App() {
       if (response.ok) {
         setIsOnlineSynced(true);
       } else {
-        console.log('Sync failed with response:', response.status);
+        console.log('Push to cloud failed with response:', response.status);
       }
     } catch (err) {
-      console.log('Network sync failed:', err);
+      console.log('Push to cloud network failed:', err);
+    }
+  };
+
+  const triggerCloudSync = async (txs: Transaction[], maps: UPIMapping[]) => {
+    await pushToCloud(txs, maps, creditBase);
+  };
+
+  const pullAndMergeFromCloud = async (
+    currentTxs: Transaction[],
+    currentMaps: UPIMapping[],
+    currentBase: number,
+    url: string = syncUrl,
+    token: string = syncToken
+  ) => {
+    if (!url || !token) return;
+    setIsCloudSyncing(true);
+    setSyncError(null);
+    try {
+      const response = await fetch(`${url}/api/sync?token=${token}`);
+      if (!response.ok) {
+        throw new Error(`Sync server returned status ${response.status}`);
+      }
+      const data = await response.json();
+      
+      const remoteTxs = (data.transactions || []) as Transaction[];
+      const remoteMaps = (data.mappings || []) as UPIMapping[];
+      const remoteBase = data.creditBase !== undefined ? data.creditBase : currentBase;
+
+      // Merge transactions by unique ID
+      const txMap = new Map<string, Transaction>();
+      remoteTxs.forEach(tx => txMap.set(tx.id, tx));
+      currentTxs.forEach(tx => txMap.set(tx.id, tx));
+      const mergedTxs = Array.from(txMap.values());
+      mergedTxs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+      // Merge mappings by upiId (case-insensitive key)
+      const mapMap = new Map<string, UPIMapping>();
+      remoteMaps.forEach(m => mapMap.set(m.upiId.toLowerCase(), m));
+      currentMaps.forEach(m => mapMap.set(m.upiId.toLowerCase(), m));
+      const mergedMaps = Array.from(mapMap.values());
+
+      const mergedBase = remoteBase !== currentBase ? remoteBase : currentBase;
+
+      // Save merged values
+      setTransactions(mergedTxs);
+      setMappings(mergedMaps);
+      setCreditBase(mergedBase);
+      
+      const now = new Date().toISOString();
+      setLastSyncedAt(now);
+
+      await AsyncStorage.setItem('fm_transactions', JSON.stringify(mergedTxs));
+      await AsyncStorage.setItem('fm_mappings', JSON.stringify(mergedMaps));
+      await AsyncStorage.setItem('fm_credit_base', mergedBase.toString());
+      await AsyncStorage.setItem('fm_last_synced_at', now);
+
+      setIsOnlineSynced(true);
+
+      // Push merged back to server
+      await pushToCloud(mergedTxs, mergedMaps, mergedBase, url, token);
+    } catch (err: any) {
+      console.log('Bidirectional sync failed:', err);
+      setSyncError(err.message || 'Network error');
+      setIsOnlineSynced(false);
+    } finally {
+      setIsCloudSyncing(false);
     }
   };
 
   // Query Phone's SMS Database Natively (Android release builds)
-  const syncSmsInbox = () => {
+  const syncSmsInbox = async () => {
     if (Platform.OS !== 'android') {
       Alert.alert('Sandbox Only', 'Natively reading SMS inbox is only supported on Android devices.');
       return;
@@ -183,6 +282,28 @@ export default function App() {
         'Expo Go Sandbox Mode',
         'Native SMS access requires an Android APK build (Expo prebuild). Use the SMS Sandbox tab to simulate messages on this client!'
       );
+      return;
+    }
+
+    // Request permissions dynamically at runtime
+    try {
+      const { PermissionsAndroid } = require('react-native');
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.READ_SMS,
+        {
+          title: 'SMS Permission Required',
+          message: 'FlowFinance needs access to read your SMS to detect and import your bank transaction alerts.',
+          buttonNeutral: 'Ask Me Later',
+          buttonNegative: 'Cancel',
+          buttonPositive: 'OK'
+        }
+      );
+      if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+        Alert.alert('Permission Denied', 'FlowFinance requires SMS read permission to sync transactions.');
+        return;
+      }
+    } catch (err) {
+      console.warn('Failed to request SMS permission:', err);
       return;
     }
 
@@ -555,7 +676,6 @@ export default function App() {
           </View>
         )}
 
-        {/* TAB 4: SETTINGS */}
         {activeTab === 'settings' && (
           <View>
             <View style={styles.formCard}>
@@ -587,6 +707,27 @@ export default function App() {
                 placeholderTextColor="#6b7280"
                 autoCapitalize="none"
               />
+
+              {syncError && (
+                <Text style={styles.syncErrorText}>{syncError}</Text>
+              )}
+              {lastSyncedAt && (
+                <Text style={styles.syncSuccessText}>
+                  Last synced: {new Date(lastSyncedAt).toLocaleString()}
+                </Text>
+              )}
+
+              <TouchableOpacity 
+                style={[styles.btnPrimary, { marginTop: 5 }]} 
+                onPress={() => pullAndMergeFromCloud(transactions, mappings, creditBase)}
+                disabled={isCloudSyncing}
+              >
+                {isCloudSyncing ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.btnText}>Sync Now (Bidirectional)</Text>
+                )}
+              </TouchableOpacity>
             </View>
 
             <View style={styles.formCard}>
@@ -973,6 +1114,20 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     fontWeight: '600',
     marginBottom: 6
+  },
+  syncErrorText: {
+    color: '#ef4444',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 8,
+    textAlign: 'center'
+  },
+  syncSuccessText: {
+    color: '#10b981',
+    fontSize: 11,
+    fontWeight: '500',
+    marginBottom: 8,
+    textAlign: 'center'
   },
   footerNav: {
     position: 'absolute',
