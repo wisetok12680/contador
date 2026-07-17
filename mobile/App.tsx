@@ -19,7 +19,8 @@ import { parseSMS, getAutoBrand } from './lib/smsParser';
 let SmsAndroid: any = null;
 if (Platform.OS === 'android') {
   try {
-    SmsAndroid = require('react-native-get-sms-android').default;
+    const smsModule = require('react-native-get-sms-android');
+    SmsAndroid = smsModule.default || smsModule;
   } catch (e) {
     console.log('SmsAndroid is not available. Native SMS features will be mocked.');
   }
