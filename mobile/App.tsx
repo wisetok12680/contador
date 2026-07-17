@@ -310,7 +310,7 @@ export default function App() {
     setIsSyncing(true);
     const filter = {
       box: 'inbox' as const,
-      maxCount: 50
+      maxCount: 500
     };
 
     SmsAndroid.list(
@@ -336,7 +336,10 @@ export default function App() {
     let newTransactionsAdded = 0;
     let tempTxs = [...transactions];
 
-    rawMsgs.forEach((msg) => {
+    // Sort raw messages by date descending (newest first) to ensure chronological scanning
+    const sortedRawMsgs = [...rawMsgs].sort((a, b) => b.date - a.date);
+
+    for (const msg of sortedRawMsgs) {
       const body = msg.body;
       const parsed = parseSMS(body);
 
@@ -356,14 +359,21 @@ export default function App() {
             type: parsed.type,
             merchant: parsed.merchant,
             timestamp: smsTime,
-            isCreditLineReset: parsed.isCreditLineReset,
+            isCreditLineReset: parsed.isCreditLineReset || (parsed.type === 'credit' && parsed.amount >= creditBase),
             raw: parsed.raw
           };
           tempTxs.push(newTx);
           newTransactionsAdded++;
         }
+
+        // If we hit a deposit that resets the credit line (type credit and amount >= creditBase),
+        // we stop scanning older SMS alerts.
+        if (parsed.isCreditLineReset || (parsed.type === 'credit' && parsed.amount >= creditBase)) {
+          console.log(`Found latest credit line reset deposit of ₹${parsed.amount}. Stopping SMS ingestion.`);
+          break;
+        }
       }
-    });
+    }
 
     if (newTransactionsAdded > 0) {
       // Sort newest first

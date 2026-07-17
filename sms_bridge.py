@@ -169,6 +169,11 @@ def main():
                 # Overwrite parsed timestamp with actual SMS timestamp
                 parsed["timestamp"] = msg.get("date", parsed["timestamp"])
                 parsed_transactions.append(parsed)
+                
+                # Stop parsing if we hit the credit line reset deposit (>= 5000)
+                if parsed.get("isCreditLineReset") or (parsed.get("type") == "credit" and parsed.get("amount") >= 5000):
+                    print(f"🎯 Found latest credit line reset deposit of ₹{parsed['amount']}. Stopping SMS ingestion.")
+                    break
 
     print(f"📊 Found {len(parsed_transactions)} bank transaction messages.")
     
