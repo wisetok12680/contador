@@ -35,6 +35,7 @@ interface Transaction {
   timestamp: string;
   isCreditLineReset: boolean;
   raw: string;
+  isExcluded?: boolean;
 }
 
 interface UPIMapping {
@@ -57,6 +58,14 @@ export default function App() {
   const [isCloudSyncing, setIsCloudSyncing] = useState<boolean>(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [smsCutoffTime, setSmsCutoffTime] = useState<string>('');
+
+  // Manual transaction inputs
+  const [isManualModalOpen, setIsManualModalOpen] = useState<boolean>(false);
+  const [manualAmount, setManualAmount] = useState<string>('');
+  const [manualType, setManualType] = useState<'debit' | 'credit'>('debit');
+  const [manualMerchant, setManualMerchant] = useState<string>('');
+  const [manualIsReset, setManualIsReset] = useState<boolean>(false);
 
   // Form Inputs
   const [newUpi, setNewUpi] = useState<string>('');
@@ -78,12 +87,14 @@ export default function App() {
       const savedTx = await AsyncStorage.getItem('fm_transactions');
       const savedMappings = await AsyncStorage.getItem('fm_mappings');
       const savedLastSynced = await AsyncStorage.getItem('fm_last_synced_at');
+      const savedCutoff = await AsyncStorage.getItem('fm_sms_cutoff_time');
 
       let currentBase = 5000;
       let currentToken = '';
       let currentUrl = '';
       let currentTxs: Transaction[] = [];
       let currentMaps: UPIMapping[] = [];
+      let currentCutoff = '';
 
       if (savedBase) {
         currentBase = parseFloat(savedBase);
@@ -99,6 +110,14 @@ export default function App() {
       }
       if (savedLastSynced) {
         setLastSyncedAt(savedLastSynced);
+      }
+      if (savedCutoff) {
+        currentCutoff = savedCutoff;
+        setSmsCutoffTime(currentCutoff);
+      } else {
+        currentCutoff = new Date().toISOString();
+        setSmsCutoffTime(currentCutoff);
+        await AsyncStorage.setItem('fm_sms_cutoff_time', currentCutoff);
       }
 
       if (savedMappings) {
@@ -144,7 +163,7 @@ export default function App() {
       }
 
       if (currentUrl && currentToken) {
-        pullAndMergeFromCloud(currentTxs, currentMaps, currentBase, currentUrl, currentToken);
+        pullAndMergeFromCloud(currentTxs, currentMaps, currentBase, currentUrl, currentToken, currentCutoff);
       }
     } catch (e) {
       console.log('Failed to load data:', e);
@@ -177,7 +196,8 @@ export default function App() {
     maps: UPIMapping[],
     base: number = creditBase,
     url: string = syncUrl,
-    token: string = syncToken
+    token: string = syncToken,
+    cutoff: string = smsCutoffTime
   ) => {
     if (!url || !token) return;
     try {
@@ -191,7 +211,8 @@ export default function App() {
           transactions: txs,
           mappings: maps,
           creditBase: base,
-          lastSync: new Date().toISOString()
+          lastSync: new Date().toISOString(),
+          smsCutoffTime: cutoff
         })
       });
 
@@ -206,7 +227,7 @@ export default function App() {
   };
 
   const triggerCloudSync = async (txs: Transaction[], maps: UPIMapping[]) => {
-    await pushToCloud(txs, maps, creditBase);
+    await pushToCloud(txs, maps, creditBase, syncUrl, syncToken, smsCutoffTime);
   };
 
   const pullAndMergeFromCloud = async (
@@ -214,7 +235,8 @@ export default function App() {
     currentMaps: UPIMapping[],
     currentBase: number,
     url: string = syncUrl,
-    token: string = syncToken
+    token: string = syncToken,
+    currentCutoff: string = smsCutoffTime
   ) => {
     if (!url || !token) return;
     setIsCloudSyncing(true);
@@ -229,6 +251,7 @@ export default function App() {
       const remoteTxs = (data.transactions || []) as Transaction[];
       const remoteMaps = (data.mappings || []) as UPIMapping[];
       const remoteBase = data.creditBase !== undefined ? data.creditBase : currentBase;
+      const remoteCutoff = data.smsCutoffTime || currentCutoff;
 
       // Merge transactions by unique ID
       const txMap = new Map<string, Transaction>();
@@ -249,6 +272,7 @@ export default function App() {
       setTransactions(mergedTxs);
       setMappings(mergedMaps);
       setCreditBase(mergedBase);
+      setSmsCutoffTime(remoteCutoff);
       
       const now = new Date().toISOString();
       setLastSyncedAt(now);
@@ -256,12 +280,13 @@ export default function App() {
       await AsyncStorage.setItem('fm_transactions', JSON.stringify(mergedTxs));
       await AsyncStorage.setItem('fm_mappings', JSON.stringify(mergedMaps));
       await AsyncStorage.setItem('fm_credit_base', mergedBase.toString());
+      await AsyncStorage.setItem('fm_sms_cutoff_time', remoteCutoff);
       await AsyncStorage.setItem('fm_last_synced_at', now);
 
       setIsOnlineSynced(true);
 
       // Push merged back to server
-      await pushToCloud(mergedTxs, mergedMaps, mergedBase, url, token);
+      await pushToCloud(mergedTxs, mergedMaps, mergedBase, url, token, remoteCutoff);
     } catch (err: any) {
       console.log('Bidirectional sync failed:', err);
       setSyncError(err.message || 'Network error');
@@ -339,14 +364,21 @@ export default function App() {
 
     // Sort raw messages by date descending (newest first) to ensure chronological scanning
     const sortedRawMsgs = [...rawMsgs].sort((a, b) => b.date - a.date);
+    const cutoffDate = smsCutoffTime ? new Date(smsCutoffTime) : new Date(0);
 
     for (const msg of sortedRawMsgs) {
+      const smsDate = new Date(msg.date);
+      // Skip if SMS is older than cutoff time
+      if (smsDate.getTime() < cutoffDate.getTime()) {
+        continue;
+      }
+
       const body = msg.body;
       const parsed = parseSMS(body);
 
       if (parsed) {
         // Use message timestamp
-        const smsTime = new Date(msg.date).toISOString();
+        const smsTime = smsDate.toISOString();
         
         // Check for duplicates based on content + timestamp matches
         const exists = tempTxs.some(
@@ -388,18 +420,21 @@ export default function App() {
 
   // Calculations
   const getCreditLineStatus = () => {
-    const resetIndices = transactions
+    // Filter active transactions
+    const activeTxs = transactions.filter(tx => !tx.isExcluded);
+
+    const resetIndices = activeTxs
       .map((tx, idx) => (tx.isCreditLineReset || (tx.type === 'credit' && tx.amount >= creditBase) ? idx : -1))
       .filter(idx => idx !== -1);
 
     const latestResetIdx = resetIndices.length > 0 ? Math.max(...resetIndices) : -1;
     
     let startingBalance = creditBase;
-    let relevantTxs = transactions;
+    let relevantTxs = activeTxs;
 
     if (latestResetIdx !== -1) {
-      startingBalance = transactions[latestResetIdx].amount;
-      relevantTxs = transactions.slice(0, latestResetIdx);
+      startingBalance = creditBase;
+      relevantTxs = activeTxs.slice(0, latestResetIdx);
     }
 
     const totalDebits = relevantTxs
@@ -426,6 +461,45 @@ export default function App() {
     const autoBrand = getAutoBrand(upiId);
     if (autoBrand) return autoBrand;
     return upiId;
+  };
+
+  const handleToggleExclude = (id: string) => {
+    const updated = transactions.map(tx => 
+      tx.id === id ? { ...tx, isExcluded: !tx.isExcluded } : tx
+    );
+    saveTransactions(updated);
+  };
+
+  const handleSaveManualTransaction = () => {
+    const amt = parseFloat(manualAmount);
+    if (isNaN(amt) || amt <= 0) {
+      Alert.alert('Error', 'Please enter a valid amount.');
+      return;
+    }
+    if (!manualMerchant.trim()) {
+      Alert.alert('Error', 'Please enter a description/merchant.');
+      return;
+    }
+
+    const newTx: Transaction = {
+      id: 'manual_' + Date.now(),
+      amount: amt,
+      type: manualType,
+      merchant: manualMerchant.trim(),
+      timestamp: new Date().toISOString(),
+      isCreditLineReset: manualType === 'credit' && manualIsReset,
+      raw: `Manually added transaction: ${manualMerchant.trim()} (₹${amt})`
+    };
+
+    const updated = [newTx, ...transactions];
+    saveTransactions(updated);
+
+    // Reset states
+    setManualAmount('');
+    setManualMerchant('');
+    setManualType('debit');
+    setManualIsReset(false);
+    setIsManualModalOpen(false);
   };
 
   // Actions
@@ -545,16 +619,84 @@ export default function App() {
           <View>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Transactions Feed</Text>
-              {Platform.OS === 'android' && (
-                <TouchableOpacity style={styles.syncBtn} onPress={syncSmsInbox} disabled={isSyncing}>
-                  {isSyncing ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={styles.syncBtnText}>Sync Inbox</Text>
-                  )}
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity style={styles.addManualBtn} onPress={() => setIsManualModalOpen(!isManualModalOpen)}>
+                  <Text style={styles.syncBtnText}>{isManualModalOpen ? 'Close' : '+ Add'}</Text>
                 </TouchableOpacity>
-              )}
+                {Platform.OS === 'android' && (
+                  <TouchableOpacity style={styles.syncBtn} onPress={syncSmsInbox} disabled={isSyncing}>
+                    {isSyncing ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.syncBtnText}>Sync Inbox</Text>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
+
+            {isManualModalOpen && (
+              <View style={[styles.formCard, { marginBottom: 15 }]}>
+                <Text style={styles.formTitle}>Add Manual Transaction</Text>
+                
+                <TextInput 
+                  style={styles.input}
+                  placeholder="Amount (₹)"
+                  placeholderTextColor="#6b7280"
+                  keyboardType="numeric"
+                  value={manualAmount}
+                  onChangeText={setManualAmount}
+                />
+
+                <TextInput 
+                  style={styles.input}
+                  placeholder="Merchant / Description (e.g. Grocery)"
+                  placeholderTextColor="#6b7280"
+                  value={manualMerchant}
+                  onChangeText={setManualMerchant}
+                />
+
+                <Text style={styles.settingLabel}>Type</Text>
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+                  <TouchableOpacity 
+                    style={[styles.typeSelectBtn, manualType === 'debit' ? styles.typeSelectBtnActive : null]}
+                    onPress={() => setManualType('debit')}
+                  >
+                    <Text style={[styles.typeSelectBtnText, manualType === 'debit' ? styles.typeSelectBtnTextActive : null]}>Debit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.typeSelectBtn, manualType === 'credit' ? styles.typeSelectBtnActive : null]}
+                    onPress={() => setManualType('credit')}
+                  >
+                    <Text style={[styles.typeSelectBtnText, manualType === 'credit' ? styles.typeSelectBtnTextActive : null]}>Credit</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {manualType === 'credit' && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 15 }}>
+                    <TouchableOpacity 
+                      style={[styles.checkbox, manualIsReset ? styles.checkboxChecked : null]}
+                      onPress={() => setManualIsReset(!manualIsReset)}
+                    >
+                      {manualIsReset && <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900' }}>✓</Text>}
+                    </TouchableOpacity>
+                    <Text style={{ color: '#9ca3af', fontSize: 12 }}>Start new ₹5,000 monthly cycle</Text>
+                  </View>
+                )}
+
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <TouchableOpacity style={[styles.btnPrimary, { flex: 1 }]} onPress={handleSaveManualTransaction}>
+                    <Text style={styles.btnText}>Save</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.btnSecondary, { flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 0 }]} 
+                    onPress={() => setIsManualModalOpen(false)}
+                  >
+                    <Text style={[styles.btnText, { color: '#9ca3af' }]}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
 
             {transactions.length === 0 ? (
               <View style={styles.emptyCard}>
@@ -564,6 +706,7 @@ export default function App() {
             ) : (
               transactions.map(tx => {
                 const isDebit = tx.type === 'debit';
+                const isExcluded = tx.isExcluded;
                 const userMapped = isDebit && mappings.some(m => m.upiId.toLowerCase() === tx.merchant.toLowerCase());
                 const autoBrandName = isDebit && !userMapped && getAutoBrand(tx.merchant);
                 
@@ -571,14 +714,19 @@ export default function App() {
                 const badgeText = userMapped ? 'mapped' : (autoBrandName ? 'auto' : null);
 
                 return (
-                  <View key={tx.id} style={styles.txItem}>
+                  <View key={tx.id} style={[styles.txItem, isExcluded ? { opacity: 0.4 } : null]}>
                     <View style={[styles.txIndicator, isDebit ? styles.txDebit : styles.txCredit]} />
                     <View style={styles.txMain}>
                       <View style={styles.txTitleRow}>
-                        <Text style={styles.txTitle} numberOfLines={1}>{displayName}</Text>
+                        <Text style={[styles.txTitle, isExcluded ? { textDecorationLine: 'line-through' } : null]} numberOfLines={1}>{displayName}</Text>
                         {badgeText && (
                           <View style={styles.badgeContainer}>
                             <Text style={styles.badgeText}>{badgeText}</Text>
+                          </View>
+                        )}
+                        {isExcluded && (
+                          <View style={[styles.badgeContainer, { backgroundColor: 'rgba(239, 68, 68, 0.15)' }]}>
+                            <Text style={[styles.badgeText, { color: '#ef4444' }]}>excluded</Text>
                           </View>
                         )}
                       </View>
@@ -587,12 +735,19 @@ export default function App() {
                       </Text>
                     </View>
                     <View style={styles.txMeta}>
-                      <Text style={[styles.txAmount, isDebit ? styles.amountDebit : styles.amountCredit]}>
+                      <Text style={[styles.txAmount, isDebit ? styles.amountDebit : styles.amountCredit, isExcluded ? { textDecorationLine: 'line-through' } : null]}>
                         {isDebit ? '-' : '+'}₹{tx.amount}
                       </Text>
-                      <TouchableOpacity style={styles.txDelete} onPress={() => handleDeleteTx(tx.id)}>
-                        <Text style={styles.txDeleteText}>Delete</Text>
-                      </TouchableOpacity>
+                      <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                        <TouchableOpacity onPress={() => handleToggleExclude(tx.id)}>
+                          <Text style={[styles.txActionText, isExcluded ? styles.txActionInclude : styles.txActionExclude]}>
+                            {isExcluded ? 'Include' : 'Exclude'}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => handleDeleteTx(tx.id)}>
+                          <Text style={styles.txDeleteText}>Delete</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
                 );
@@ -754,6 +909,43 @@ export default function App() {
                   await AsyncStorage.setItem('fm_credit_base', num.toString());
                 }}
               />
+            </View>
+
+            <View style={styles.formCard}>
+              <Text style={styles.formTitle}>SMS Ingestion Settings</Text>
+              <Text style={styles.settingLabel}>Only scan SMS alerts received after:</Text>
+              <Text style={{ color: '#fff', fontSize: 13, marginBottom: 12, fontWeight: '600' }}>
+                {smsCutoffTime ? new Date(smsCutoffTime).toLocaleString() : 'All historical messages'}
+              </Text>
+              
+              <TouchableOpacity 
+                style={[styles.btnPrimary, { backgroundColor: '#3b82f6', marginBottom: 8 }]} 
+                onPress={async () => {
+                  const now = new Date().toISOString();
+                  setSmsCutoffTime(now);
+                  await AsyncStorage.setItem('fm_sms_cutoff_time', now);
+                  Alert.alert('Cutoff Updated', 'The app will now only scan messages received from this moment onward.');
+                  if (syncToken) {
+                    pushToCloud(transactions, mappings, creditBase, syncUrl, syncToken, now);
+                  }
+                }}
+              >
+                <Text style={styles.btnText}>Set Cutoff to NOW</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.btnSecondary, { backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 0 }]} 
+                onPress={async () => {
+                  setSmsCutoffTime('');
+                  await AsyncStorage.removeItem('fm_sms_cutoff_time');
+                  Alert.alert('Cutoff Cleared', 'The app will scan your entire message history.');
+                  if (syncToken) {
+                    pushToCloud(transactions, mappings, creditBase, syncUrl, syncToken, '');
+                  }
+                }}
+              >
+                <Text style={[styles.btnText, { color: '#9ca3af' }]}>Clear Cutoff (Scan All)</Text>
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -1062,6 +1254,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
   },
+  btnSecondary: {
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   btnText: {
     color: '#fff',
     fontSize: 13,
@@ -1139,6 +1337,57 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: 8,
     textAlign: 'center'
+  },
+  addManualBtn: {
+    backgroundColor: '#10b981',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  txActionText: {
+    fontSize: 10,
+    textDecorationLine: 'underline',
+  },
+  txActionInclude: {
+    color: '#10b981'
+  },
+  txActionExclude: {
+    color: '#ef4444'
+  },
+  typeSelectBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+  },
+  typeSelectBtnActive: {
+    backgroundColor: '#8b5cf6',
+    borderColor: '#8b5cf6',
+  },
+  typeSelectBtnText: {
+    color: '#9ca3af',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  typeSelectBtnTextActive: {
+    color: '#fff',
+  },
+  checkbox: {
+    width: 16,
+    height: 16,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  checkboxChecked: {
+    backgroundColor: '#8b5cf6',
+    borderColor: '#8b5cf6',
   },
   footerNav: {
     position: 'absolute',

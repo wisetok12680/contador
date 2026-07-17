@@ -5,7 +5,8 @@ let globalCache = {
   transactions: [] as any[],
   mappings: [] as any[],
   creditBase: 5000,
-  lastSync: null as string | null
+  lastSync: null as string | null,
+  smsCutoffTime: null as string | null
 };
 
 // Check for Vercel KV environment variables (if linked on Vercel)
@@ -88,13 +89,14 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { transactions, mappings, creditBase, lastSync } = body;
+    const { transactions, mappings, creditBase, lastSync, smsCutoffTime } = body;
 
     const data = {
       transactions: transactions || [],
       mappings: mappings || [],
       creditBase: creditBase || 5000,
-      lastSync: lastSync || new Date().toISOString()
+      lastSync: lastSync || new Date().toISOString(),
+      smsCutoffTime: smsCutoffTime || new Date().toISOString()
     };
 
     await setStoredData(data);

@@ -3,6 +3,7 @@ import re
 import sys
 import json
 import subprocess
+import urllib.request
 from datetime import datetime
 
 # ==============================================================================
@@ -13,62 +14,84 @@ from datetime import datetime
 API_BASE_URL = "http://localhost:3000" 
 
 # The Sync Token defined in your environment variables on Vercel
-SYNC_TOKEN = "your-secure-sync-token-here"
+SYNC_TOKEN = "default-token-12345"
 
 # Senders to filter (commonly Indian bank SMS handles)
 BANK_SENDER_PATTERNS = r"HDFC|ICICI|SBI|AXIS|PAYTM|PNB|BOI|KOTAK"
 
 # ==============================================================================
-# Parsing Helper
+# Fetch Dynamic Configs
+# ==============================================================================
+def get_sms_cutoff_from_server():
+    url = f"{API_BASE_URL}/api/sync?token={SYNC_TOKEN}"
+    print(f"📡 Fetching SMS cutoff config from server: {API_BASE_URL}...")
+    try:
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req, timeout=5) as response:
+            if response.status == 200:
+                data = json.loads(response.read().decode())
+                cutoff = data.get("smsCutoffTime")
+                if cutoff:
+                    print(f"🎯 Found active cutoff from server: {cutoff}")
+                    return cutoff
+    except Exception as e:
+        print(f"⚠️ Could not connect to sync server ({e}). Using local default.")
+    return None
+
+# ==============================================================================
+# Parser Helper Function
 # ==============================================================================
 def parse_sms(body):
     """
-    Parses bank SMS text locally.
-    Extracts transaction type, amount, merchant/VPA, and date.
+    Parses a single transaction SMS alert.
+    Extracts amount, transaction type, and merchant.
     """
-    clean_body = body.strip()
+    # Clean up double spaces or weird characters
+    clean_body = re.sub(r'\s+', ' ', body)
     
-    # 1. Determine transaction type (debit vs credit)
-    is_debit = bool(re.search(r"debit(ed)?|spent|withdrawn|sent|paid|pay(ment)?|transfer(red)?", clean_body, re.IGNORECASE))
-    is_credit = bool(re.search(r"credit(ed)?|received|added|deposited", clean_body, re.IGNORECASE))
-    
-    if not is_debit and not is_credit:
-        return None  # Non-transactional message
-        
-    tx_type = "debit" if is_debit else "credit"
-    
-    # 2. Extract Amount (e.g., Rs. 500, Rs.500, INR 5,000.00, Rs 150.50)
-    amount_match = re.search(r"(?:Rs\.?|INR)\s*([0-9,]+(?:\.[0-9]{2})?)", clean_body, re.IGNORECASE)
-    if not amount_match:
+    # 1. Match Amount
+    # Supports "Rs. 250", "Rs 250.00", "INR 250", "₹250.50", "credited/debited with/by Rs 250"
+    amt_match = re.search(
+        r"(?:Rs\.?|INR|₹)\s*([\d,]+(?:\.\d{2})?)",
+        clean_body,
+        re.IGNORECASE
+    )
+    if not amt_match:
         return None
         
-    amount = float(amount_match.group(1).replace(",", ""))
+    amount_str = amt_match.group(1).replace(",", "")
+    amount = float(amount_str)
     
-    # 3. Extract Merchant
-    merchant = "Unknown Merchant"
-    if is_debit:
-        # Check for UPI IDs or names
-        merchant_patterns = [
-            r"(?:to|at|VPA|Ref)\s+([a-zA-Z0-9.\-_]+@[a-zA-Z0-9.\-_]+)",  # UPI ID
-            r"(?:to|at)\s+([a-zA-Z0-9\s\-]{3,20})(?:\s+on|\s+from|\s+via|\.|\b)",  # at SHOP NAME
-            r"Ref\s*(?:No)?\.?\s*([a-zA-Z0-9\-_]{3,15})",
-            r"Info:\s*([a-zA-Z0-9\-_]+)",
-            r"UPI-([a-zA-Z0-9\-_]+)"
-        ]
+    # 2. Determine Transaction Type
+    tx_type = None
+    if re.search(r"debited|spent|paid|withdrawn|charged|sent to", clean_body, re.IGNORECASE):
+        tx_type = "debit"
+    elif re.search(r"credited|received|deposited|refunded", clean_body, re.IGNORECASE):
+        tx_type = "credit"
         
-        for pattern in merchant_patterns:
-            match = re.search(pattern, clean_body, re.IGNORECASE)
-            if match:
-                candidate = match.group(1).strip()
-                if not re.match(r"^(a/c|account|bank|branch|ref|refno|upi|via|on|date|time)$", candidate, re.IGNORECASE):
-                    merchant = candidate
-                    break
+    if not tx_type:
+        return None
+        
+    # 3. Match Merchant
+    merchant = "Unknown Merchant"
+    
+    # Check for typical UPI transaction formats: "UPI-merchantName@handle" or "Ref: name"
+    upi_match = re.search(
+        r"UPI-([a-zA-Z0-9.\-_]+@[a-zA-Z]+)|UPI(?:\s+Ref)?\s*([a-zA-Z0-9.\-_]+@[a-zA-Z]+)",
+        clean_body,
+        re.IGNORECASE
+    )
+    if upi_match:
+        merchant = upi_match.group(1) or upi_match.group(2)
     else:
-        sender_match = re.search(r"from\s+([a-zA-Z0-9\s\-]{3,20})(?:\s+on|\s+to|\.|\b)", clean_body, re.IGNORECASE)
-        if sender_match:
-            merchant = sender_match.group(1).strip()
-        else:
-            merchant = "Salary / Deposit"
+        # Fallback 1: Match keyword following Info/Ref/To/At
+        ref_match = re.search(
+            r"(?:Info:|Ref:|To|At)\s*([a-zA-Z0-9\s.\-_]+)(?:\.|\son\b|\bfor\b)",
+            clean_body,
+            re.IGNORECASE
+        )
+        if ref_match:
+            merchant = ref_match.group(1).strip()
             
     return {
         "amount": amount,
@@ -80,64 +103,70 @@ def parse_sms(body):
     }
 
 # ==============================================================================
-# Android ADB SMS Reader
+# Native ADB SMS Reader
 # ==============================================================================
 def read_android_sms_adb():
     """
-    Fetches SMS inbox from an Android phone connected via USB debugging (ADB).
+    Spawns ADB process to read target SMS inbox rows.
+    Translates database columns into python dict objects.
     """
-    print("🔄 Connecting to Android phone via ADB...")
     try:
-        # Check if adb is available
-        subprocess.run(["adb", "devices"], check=True, stdout=subprocess.DEVNULL)
+        # Check if adb is installed and device is connected
+        subprocess.check_output(["adb", "devices"], stderr=subprocess.STDOUT)
     except (subprocess.CalledProcessError, FileNotFoundError):
-        print("❌ Error: ADB command not found or no device connected.")
-        print("Please connect your phone, enable USB debugging, and ensure 'adb' is in your system path.")
+        print("❌ ADB CLI is not installed or no devices connected. Make sure USB Debugging is ON.")
         return []
 
-    # Run content query command on Android
-    # uri is content://sms/inbox
-    # we select body, address, date
+    print("📲 Connecting to Android Device via ADB shell...")
+    
+    # SQL query for Android content provider
     cmd = [
-        "adb", "shell", "content", "query",
-        "--uri", "content://sms/inbox",
-        "--projection", "address,body,date",
+        "adb", "shell", 
+        "content", "query", 
+        "--uri", "content://sms/inbox", 
+        "--projection", "_id:address:date:body", 
         "--sort", "date DESC"
     ]
     
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        output = subprocess.check_output(cmd).decode("utf-8", errors="ignore")
     except subprocess.CalledProcessError as e:
-        print(f"❌ Error fetching SMS content: {e}")
+        print(f"❌ Failed to run ADB SMS query command: {e}")
         return []
 
+    lines = output.splitlines()
     messages = []
-    # ADB query output looks like:
-    # Row: 0 address=HDFCBK, body=Your A/c is debited..., date=1672531199000
-    # We parse the output row by row
+    
     current_msg = {}
     
-    for line in result.stdout.splitlines():
+    for line in lines:
         line = line.strip()
+        if not line:
+            continue
+            
+        # Parse ADB output row values
         if line.startswith("Row:"):
-            # Process previous message if complete
+            # If there's an existing parsed message, save it
             if "address" in current_msg and "body" in current_msg:
                 messages.append(current_msg)
-                
             current_msg = {}
-            # Extract attributes using regex
-            address_match = re.search(r"address=([^,]+)", line)
-            body_match = re.search(r"body=(.+?)(?:, date=|$)", line)
-            date_match = re.search(r"date=(\d+)", line)
             
-            if address_match:
-                current_msg["address"] = address_match.group(1).strip()
-            if body_match:
-                current_msg["body"] = body_match.group(1).strip()
-            if date_match:
-                # Convert milliseconds timestamp to string date
-                ms_ts = int(date_match.group(1))
-                current_msg["date"] = datetime.fromtimestamp(ms_ts / 1000.0).isoformat()
+        # Match variables
+        match = re.match(r"(\w+)=(.*)", line)
+        if match:
+            key, val = match.groups()
+            if key == "_id":
+                current_msg["_id"] = val
+            elif key == "address":
+                current_msg["address"] = val
+            elif key == "body":
+                current_msg["body"] = val
+            elif key == "date":
+                # Convert milliseconds timestamp from Android db to ISO 8601 string
+                date_match = re.search(r"(\d+)", val)
+                if date_match:
+                    ms_ts = int(date_match.group(1))
+                    current_msg["date"] = datetime.fromtimestamp(ms_ts / 1000.0).isoformat()
                 
     # Append final message
     if "address" in current_msg and "body" in current_msg:
@@ -154,6 +183,19 @@ def main():
         print("📭 No messages found or unable to read device.")
         return
 
+    # Fetch server cutoff time if available
+    server_cutoff = get_sms_cutoff_from_server()
+    cutoff_dt = None
+    if server_cutoff:
+        try:
+            # Parse ISO date string (replace Z if present)
+            clean_cutoff = server_cutoff.replace("Z", "")
+            if "." in clean_cutoff:
+                clean_cutoff = clean_cutoff.split(".")[0]
+            cutoff_dt = datetime.fromisoformat(clean_cutoff)
+        except Exception as e:
+            print(f"⚠️ Error parsing cutoff time: {e}")
+
     print(f"📬 Read {len(sms_list)} messages from inbox. Filtering bank SMS...")
     
     parsed_transactions = []
@@ -164,6 +206,20 @@ def main():
         
         # Check if message is from a bank
         if re.search(BANK_SENDER_PATTERNS, sender, re.IGNORECASE):
+            # Check message date against cutoff date
+            msg_date_str = msg.get("date")
+            if msg_date_str and cutoff_dt:
+                try:
+                    clean_msg_date = msg_date_str.replace("Z", "")
+                    if "." in clean_msg_date:
+                        clean_msg_date = clean_msg_date.split(".")[0]
+                    msg_dt = datetime.fromisoformat(clean_msg_date)
+                    if msg_dt < cutoff_dt:
+                        # Skip older messages
+                        continue
+                except Exception as e:
+                    pass
+
             parsed = parse_sms(body)
             if parsed:
                 # Overwrite parsed timestamp with actual SMS timestamp

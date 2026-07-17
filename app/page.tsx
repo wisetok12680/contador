@@ -27,6 +27,7 @@ interface Transaction {
   timestamp: string;
   isCreditLineReset: boolean;
   raw: string;
+  isExcluded?: boolean;
 }
 
 interface UPIMapping {
@@ -44,6 +45,14 @@ export default function Home() {
   const [mappings, setMappings] = useState<UPIMapping[]>([]);
   const [syncToken, setSyncToken] = useState<string>('');
   const [isSynced, setIsSynced] = useState<boolean>(true);
+  const [smsCutoffTime, setSmsCutoffTime] = useState<string>('');
+
+  // Manual Transaction Form
+  const [isManualFormOpen, setIsManualFormOpen] = useState<boolean>(false);
+  const [manualAmount, setManualAmount] = useState<string>('');
+  const [manualType, setManualType] = useState<'debit' | 'credit'>('debit');
+  const [manualMerchant, setManualMerchant] = useState<string>('');
+  const [manualIsReset, setManualIsReset] = useState<boolean>(false);
 
   // Form Inputs
   const [editingMappingUpi, setEditingMappingUpi] = useState<string | null>(null);
@@ -76,6 +85,10 @@ export default function Home() {
           setCreditBase(data.creditBase);
           localStorage.setItem('fm_credit_base', data.creditBase.toString());
         }
+        if (data.smsCutoffTime) {
+          setSmsCutoffTime(data.smsCutoffTime);
+          localStorage.setItem('fm_sms_cutoff_time', data.smsCutoffTime);
+        }
         setIsSynced(true);
       } else {
         console.warn('Backend sync returned error status:', res.status);
@@ -88,7 +101,7 @@ export default function Home() {
   };
 
   // Push changes to Backend Sync API
-  const pushToBackend = async (txs: Transaction[], maps: UPIMapping[], base: number, tokenStr: string) => {
+  const pushToBackend = async (txs: Transaction[], maps: UPIMapping[], base: number, tokenStr: string, cutoff: string = smsCutoffTime) => {
     if (!tokenStr) return;
     setIsSynced(false);
     try {
@@ -102,7 +115,8 @@ export default function Home() {
           transactions: txs,
           mappings: maps,
           creditBase: base,
-          lastSync: new Date().toISOString()
+          lastSync: new Date().toISOString(),
+          smsCutoffTime: cutoff
         })
       });
       if (res.ok) {
@@ -119,6 +133,7 @@ export default function Home() {
     const savedTx = localStorage.getItem('fm_transactions');
     const savedMappings = localStorage.getItem('fm_mappings');
     const savedToken = localStorage.getItem('fm_sync_token');
+    const savedCutoff = localStorage.getItem('fm_sms_cutoff_time');
 
     let tokenVal = '';
 
@@ -126,6 +141,13 @@ export default function Home() {
     if (savedToken) {
       tokenVal = savedToken;
       setSyncToken(tokenVal);
+    }
+    if (savedCutoff) {
+      setSmsCutoffTime(savedCutoff);
+    } else {
+      const nowStr = new Date().toISOString();
+      setSmsCutoffTime(nowStr);
+      localStorage.setItem('fm_sms_cutoff_time', nowStr);
     }
 
     // Initial load check
@@ -207,7 +229,7 @@ export default function Home() {
     setTransactions(newTxs);
     localStorage.setItem('fm_transactions', JSON.stringify(newTxs));
     if (syncToken) {
-      pushToBackend(newTxs, mappings, creditBase, syncToken);
+      pushToBackend(newTxs, mappings, creditBase, syncToken, smsCutoffTime);
     } else {
       triggerSyncMock();
     }
@@ -217,7 +239,7 @@ export default function Home() {
     setMappings(newMaps);
     localStorage.setItem('fm_mappings', JSON.stringify(newMaps));
     if (syncToken) {
-      pushToBackend(transactions, newMaps, creditBase, syncToken);
+      pushToBackend(transactions, newMaps, creditBase, syncToken, smsCutoffTime);
     } else {
       triggerSyncMock();
     }
@@ -234,20 +256,22 @@ export default function Home() {
   // Starting balance = find the latest credit line reset transaction amount (default 5k)
   // Deduct all debits that happened *after* that reset transaction
   const getCreditLineStatus = () => {
+    const activeTxs = transactions.filter(tx => !tx.isExcluded);
+
     // Find index of the latest credit line reset
-    const resetIndices = transactions
+    const resetIndices = activeTxs
       .map((tx, idx) => (tx.isCreditLineReset || (tx.type === 'credit' && tx.amount >= creditBase) ? idx : -1))
       .filter(idx => idx !== -1);
 
     const latestResetIdx = resetIndices.length > 0 ? Math.max(...resetIndices) : -1;
     
     let startingBalance = creditBase;
-    let relevantTxs = transactions;
+    let relevantTxs = activeTxs;
 
     if (latestResetIdx !== -1) {
-      startingBalance = transactions[latestResetIdx].amount;
+      startingBalance = creditBase;
       // Get all transactions after this reset (since transactions are sorted newest first, these are index 0 to latestResetIdx)
-      relevantTxs = transactions.slice(0, latestResetIdx);
+      relevantTxs = activeTxs.slice(0, latestResetIdx);
     }
 
     const totalDebits = relevantTxs
@@ -279,6 +303,40 @@ export default function Home() {
   };
 
   // Handlers
+  const handleToggleExclude = (id: string) => {
+    const updated = transactions.map(tx => 
+      tx.id === id ? { ...tx, isExcluded: !tx.isExcluded } : tx
+    );
+    updateTransactions(updated);
+  };
+
+  const handleSaveManualTransaction = (e: React.FormEvent) => {
+    e.preventDefault();
+    const amt = parseFloat(manualAmount);
+    if (isNaN(amt) || amt <= 0) return;
+    if (!manualMerchant.trim()) return;
+
+    const newTx: Transaction = {
+      id: 'manual_' + Date.now(),
+      amount: amt,
+      type: manualType,
+      merchant: manualMerchant.trim(),
+      timestamp: new Date().toISOString(),
+      isCreditLineReset: manualType === 'credit' && manualIsReset,
+      raw: `Manually added transaction: ${manualMerchant.trim()} (₹${amt})`
+    };
+
+    const updated = [newTx, ...transactions];
+    updateTransactions(updated);
+
+    // Reset fields
+    setManualAmount('');
+    setManualMerchant('');
+    setManualType('debit');
+    setManualIsReset(false);
+    setIsManualFormOpen(false);
+  };
+
   const handleDeleteTransaction = (id: string) => {
     const updated = transactions.filter(tx => tx.id !== id);
     updateTransactions(updated);
@@ -454,26 +512,104 @@ export default function Home() {
               Recent Transactions
               <span className="text-xs font-medium text-muted">({transactions.length})</span>
             </h2>
-            <button 
-              className="text-xs text-primary font-semibold flex items-center gap-1 bg-transparent border-none cursor-pointer"
-              onClick={() => {
-                // Instantly load mock baseline transaction
-                const now = new Date();
-                const resetTx: Transaction = {
-                  id: Date.now().toString(),
-                  amount: creditBase,
-                  type: 'credit',
-                  merchant: 'Salary / Reset',
-                  timestamp: now.toISOString(),
-                  isCreditLineReset: true,
-                  raw: `Credited Rs.${creditBase}.00 to credit line starting the month.`
-                };
-                updateTransactions([resetTx, ...transactions]);
-              }}
-            >
-              <Plus size={14} /> Start New Month
-            </button>
+            <div className="flex gap-2">
+              <button 
+                className="btn btn-secondary text-xs flex items-center gap-1"
+                onClick={() => setIsManualFormOpen(!isManualFormOpen)}
+              >
+                <Plus size={14} /> Add Manual
+              </button>
+              <button 
+                className="text-xs text-primary font-semibold flex items-center gap-1 bg-transparent border-none cursor-pointer"
+                onClick={() => {
+                  // Instantly load mock baseline transaction
+                  const now = new Date();
+                  const resetTx: Transaction = {
+                    id: Date.now().toString(),
+                    amount: creditBase,
+                    type: 'credit',
+                    merchant: 'Salary / Reset',
+                    timestamp: now.toISOString(),
+                    isCreditLineReset: true,
+                    raw: `Credited Rs.${creditBase}.00 to credit line starting the month.`
+                  };
+                  updateTransactions([resetTx, ...transactions]);
+                }}
+              >
+                <Plus size={14} /> Start New Month
+              </button>
+            </div>
           </div>
+
+          {isManualFormOpen && (
+            <div className="card mb-4" style={{ marginBottom: '1rem' }}>
+              <h3 className="text-sm font-bold mb-3">Add Manual Transaction</h3>
+              <form onSubmit={handleSaveManualTransaction} className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-secondary font-medium">Amount (₹)</label>
+                  <input 
+                    type="number" 
+                    placeholder="e.g. 250" 
+                    className="input" 
+                    value={manualAmount}
+                    onChange={e => setManualAmount(e.target.value)}
+                  />
+                </div>
+                
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-secondary font-medium">Merchant / Title</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. Cafe Coffee Day" 
+                    className="input" 
+                    value={manualMerchant}
+                    onChange={e => setManualMerchant(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-secondary font-medium">Type</label>
+                  <div className="flex gap-2">
+                    <button 
+                      type="button" 
+                      className={`btn ${manualType === 'debit' ? 'btn-primary' : 'btn-secondary'}`} 
+                      style={{ flex: 1 }}
+                      onClick={() => setManualType('debit')}
+                    >
+                      Debit
+                    </button>
+                    <button 
+                      type="button" 
+                      className={`btn ${manualType === 'credit' ? 'btn-primary' : 'btn-secondary'}`} 
+                      style={{ flex: 1 }}
+                      onClick={() => setManualType('credit')}
+                    >
+                      Credit
+                    </button>
+                  </div>
+                </div>
+
+                {manualType === 'credit' && (
+                  <div className="flex items-center gap-2 mb-1">
+                    <input 
+                      type="checkbox" 
+                      id="manualIsReset" 
+                      checked={manualIsReset} 
+                      onChange={e => setManualIsReset(e.target.checked)} 
+                    />
+                    <label htmlFor="manualIsReset" className="text-xs text-secondary font-medium cursor-pointer">
+                      Start a new ₹5,000 monthly cycle
+                    </label>
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Save</button>
+                  <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setIsManualFormOpen(false)}>Cancel</button>
+                </div>
+              </form>
+            </div>
+          )}
 
           <div className="tx-list">
             {transactions.length === 0 ? (
@@ -485,6 +621,7 @@ export default function Home() {
             ) : (
               transactions.map(tx => {
                 const isDebit = tx.type === 'debit';
+                const isExcluded = tx.isExcluded;
                 const userMapped = isDebit && mappings.some(m => m.upiId.toLowerCase() === tx.merchant.toLowerCase());
                 const autoBrandName = isDebit && !userMapped && getAutoBrand(tx.merchant);
                 
@@ -492,17 +629,22 @@ export default function Home() {
                 const badgeText = userMapped ? 'mapped' : (autoBrandName ? 'auto' : null);
                 
                 return (
-                  <div key={tx.id} className="tx-item">
+                  <div key={tx.id} className="tx-item" style={isExcluded ? { opacity: 0.4 } : undefined}>
                     <div className={`tx-icon-wrapper ${isDebit ? 'tx-icon-debit' : 'tx-icon-credit'}`}>
                       {isDebit ? <TrendingUp size={18} style={{ transform: 'rotate(90deg)' }} /> : <Wallet size={18} />}
                     </div>
 
                     <div className="tx-details">
                       <div className="flex items-center gap-1.5">
-                        <span className="tx-title">{displayName}</span>
+                        <span className="tx-title" style={isExcluded ? { textDecoration: 'line-through' } : undefined}>{displayName}</span>
                         {badgeText && (
                           <span className="text-xs text-muted" style={{ display: 'inline-flex', padding: '0.1rem 0.3rem', background: 'rgba(255,255,255,0.05)', borderRadius: '4px' }}>
                             {badgeText}
+                          </span>
+                        )}
+                        {isExcluded && (
+                          <span className="text-xs text-danger" style={{ display: 'inline-flex', padding: '0.1rem 0.3rem', background: 'rgba(239,68,68,0.1)', borderRadius: '4px' }}>
+                            excluded
                           </span>
                         )}
                       </div>
@@ -517,7 +659,7 @@ export default function Home() {
                     </div>
 
                     <div className="tx-meta">
-                      <div className={`tx-amount ${isDebit ? 'text-danger' : 'text-success'}`}>
+                      <div className={`tx-amount ${isDebit ? 'text-danger' : 'text-success'}`} style={isExcluded ? { textDecoration: 'line-through' } : undefined}>
                         {isDebit ? '-' : '+'}₹{tx.amount}
                       </div>
                       <div className="tx-date">
@@ -526,14 +668,22 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <button 
-                      className="btn-icon danger ml-3" 
-                      style={{ marginLeft: '0.75rem' }}
-                      onClick={() => handleDeleteTransaction(tx.id)}
-                      title="Delete transaction"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    <div className="flex items-center gap-1.5 ml-3" style={{ marginLeft: '0.75rem' }}>
+                      <button 
+                        className={`btn-icon ${isExcluded ? 'text-success' : 'text-danger'}`} 
+                        onClick={() => handleToggleExclude(tx.id)}
+                        title={isExcluded ? "Include in budget" : "Exclude from budget"}
+                      >
+                        {isExcluded ? <CheckCircle2 size={14} /> : <Sliders size={14} />}
+                      </button>
+                      <button 
+                        className="btn-icon danger" 
+                        onClick={() => handleDeleteTransaction(tx.id)}
+                        title="Delete transaction"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 );
               })
@@ -778,6 +928,48 @@ export default function Home() {
               <span className="text-xs text-muted leading-relaxed">
                 Matches the `SYNC_TOKEN` environment variable on Vercel to allow encrypted transaction uploading.
               </span>
+            </div>
+          </div>
+
+          <div className="card">
+            <h3 className="text-sm font-bold mb-3 flex items-center gap-1.5">
+              <Smartphone size={16} className="text-primary" /> SMS Ingestion Settings
+            </h3>
+            <p className="text-xs text-secondary mb-3 leading-relaxed">
+              Define the boundary cutoff. The app (and adb bridge) will only scan SMS alerts received after this time.
+            </p>
+            <div className="flex flex-col gap-2">
+              <label className="text-xs text-secondary font-medium">Active Cutoff Date</label>
+              <div className="font-semibold text-sm mb-1">
+                {smsCutoffTime ? new Date(smsCutoffTime).toLocaleString() : 'All historical messages'}
+              </div>
+              <div className="flex gap-2">
+                <button 
+                  className="btn btn-primary text-xs" 
+                  onClick={() => {
+                    const nowStr = new Date().toISOString();
+                    setSmsCutoffTime(nowStr);
+                    localStorage.setItem('fm_sms_cutoff_time', nowStr);
+                    if (syncToken) {
+                      pushToBackend(transactions, mappings, creditBase, syncToken, nowStr);
+                    }
+                  }}
+                >
+                  Set Cutoff to NOW
+                </button>
+                <button 
+                  className="btn btn-secondary text-xs" 
+                  onClick={() => {
+                    setSmsCutoffTime('');
+                    localStorage.removeItem('fm_sms_cutoff_time');
+                    if (syncToken) {
+                      pushToBackend(transactions, mappings, creditBase, syncToken, '');
+                    }
+                  }}
+                >
+                  Clear Cutoff (Scan All)
+                </button>
+              </div>
             </div>
           </div>
 
