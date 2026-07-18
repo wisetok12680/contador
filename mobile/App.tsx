@@ -919,7 +919,7 @@ export default function App() {
               </Text>
               
               <TouchableOpacity 
-                style={[styles.btnPrimary, { backgroundColor: '#3b82f6', marginBottom: 8 }]} 
+                style={[styles.btnPrimary, { marginBottom: 8 }]} 
                 onPress={async () => {
                   const now = new Date().toISOString();
                   setSmsCutoffTime(now);
@@ -989,7 +989,7 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#08070d',
+    backgroundColor: '#000000',
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   header: {
@@ -999,12 +999,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)'
+    borderBottomColor: 'rgba(255,255,255,0.04)'
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: '800',
-    color: '#f3f4f6',
+    color: '#ffffff',
     letterSpacing: -0.5
   },
   headerSubtitle: {
@@ -1045,10 +1045,10 @@ const styles = StyleSheet.create({
   dashboardCard: {
     margin: 15,
     padding: 20,
-    borderRadius: 16,
-    backgroundColor: 'rgba(20, 18, 33, 0.6)',
+    borderRadius: 12,
+    backgroundColor: '#121212',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.04)',
   },
   cardHeader: {
     flexDirection: 'row',
@@ -1064,9 +1064,9 @@ const styles = StyleSheet.create({
   },
   cardBaseBadge: {
     fontSize: 10,
-    color: '#8b5cf6',
+    color: '#ffffff',
     fontWeight: '700',
-    backgroundColor: 'rgba(139, 92, 246, 0.12)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 4
@@ -1074,7 +1074,7 @@ const styles = StyleSheet.create({
   cardBalance: {
     fontSize: 32,
     fontWeight: '800',
-    color: '#8b5cf6',
+    color: '#ffffff',
     marginVertical: 10
   },
   progressContainer: {
@@ -1085,11 +1085,11 @@ const styles = StyleSheet.create({
   },
   progressBar: {
     height: '100%',
-    backgroundColor: '#10b981',
+    backgroundColor: '#ffffff',
     borderRadius: 3
   },
   progressBarDanger: {
-    backgroundColor: '#ef4444'
+    backgroundColor: '#ff453a'
   },
   cardMeta: {
     flexDirection: 'row',
@@ -1113,17 +1113,17 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#f3f4f6',
+    color: '#ffffff',
     marginVertical: 10
   },
   syncBtn: {
-    backgroundColor: '#8b5cf6',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 6,
   },
   syncBtnText: {
-    color: '#fff',
+    color: '#ffffff',
     fontSize: 12,
     fontWeight: '600'
   },
@@ -1131,7 +1131,7 @@ const styles = StyleSheet.create({
     padding: 30,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.02)',
+    backgroundColor: '#121212',
     borderRadius: 10,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.04)'
@@ -1149,7 +1149,7 @@ const styles = StyleSheet.create({
   txItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.02)',
+    backgroundColor: '#121212',
     padding: 12,
     borderRadius: 8,
     borderWidth: 1,
@@ -1163,10 +1163,10 @@ const styles = StyleSheet.create({
     marginRight: 10
   },
   txDebit: {
-    backgroundColor: '#ef4444'
+    backgroundColor: '#ff453a'
   },
   txCredit: {
-    backgroundColor: '#10b981'
+    backgroundColor: '#30d158'
   },
   txMain: {
     flex: 1,
@@ -1179,7 +1179,7 @@ const styles = StyleSheet.create({
   txTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#f3f4f6',
+    color: '#ffffff',
     maxWidth: '70%'
   },
   badgeContainer: {
@@ -1207,10 +1207,10 @@ const styles = StyleSheet.create({
     fontWeight: '700'
   },
   amountDebit: {
-    color: '#ef4444'
+    color: '#ff453a'
   },
   amountCredit: {
-    color: '#10b981'
+    color: '#30d158'
   },
   txDelete: {
     marginTop: 4
@@ -1221,9 +1221,9 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline'
   },
   formCard: {
-    backgroundColor: 'rgba(255,255,255,0.02)',
+    backgroundColor: '#121212',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.04)',
     padding: 15,
     borderRadius: 12,
     marginBottom: 15
@@ -1231,7 +1231,7 @@ const styles = StyleSheet.create({
   formTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#f3f4f6',
+    color: '#ffffff',
     marginBottom: 10
   },
   input: {
@@ -1239,7 +1239,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
     borderRadius: 8,
-    color: '#f3f4f6',
+    color: '#ffffff',
     padding: 10,
     fontSize: 13,
     marginBottom: 10
@@ -1249,7 +1249,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top'
   },
   btnPrimary: {
-    backgroundColor: '#8b5cf6',
+    backgroundColor: '#ffffff',
     padding: 12,
     borderRadius: 8,
     alignItems: 'center',
@@ -1261,7 +1261,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   btnText: {
-    color: '#fff',
+    color: '#000000',
     fontSize: 13,
     fontWeight: '700'
   },
@@ -1269,7 +1269,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.02)',
+    backgroundColor: '#121212',
     padding: 12,
     borderRadius: 8,
     borderWidth: 1,
@@ -1279,7 +1279,7 @@ const styles = StyleSheet.create({
   mappingName: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#f3f4f6'
+    color: '#ffffff'
   },
   mappingUpi: {
     fontSize: 10,
@@ -1287,15 +1287,15 @@ const styles = StyleSheet.create({
     marginTop: 2
   },
   btnDeleteRule: {
-    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    backgroundColor: 'rgba(255, 69, 58, 0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.15)',
+    borderColor: 'rgba(255, 69, 58, 0.15)',
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 6
   },
   btnDeleteRuleText: {
-    color: '#ef4444',
+    color: '#ff453a',
     fontSize: 11,
     fontWeight: '600'
   },
@@ -1306,7 +1306,7 @@ const styles = StyleSheet.create({
     lineHeight: 16
   },
   templateBtn: {
-    backgroundColor: 'rgba(255,255,255,0.02)',
+    backgroundColor: '#121212',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.04)',
     padding: 12,
@@ -1325,21 +1325,21 @@ const styles = StyleSheet.create({
     marginBottom: 6
   },
   syncErrorText: {
-    color: '#ef4444',
+    color: '#ff453a',
     fontSize: 12,
     fontWeight: '600',
     marginBottom: 8,
     textAlign: 'center'
   },
   syncSuccessText: {
-    color: '#10b981',
+    color: '#30d158',
     fontSize: 11,
     fontWeight: '500',
     marginBottom: 8,
     textAlign: 'center'
   },
   addManualBtn: {
-    backgroundColor: '#10b981',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 6,
@@ -1349,10 +1349,10 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
   txActionInclude: {
-    color: '#10b981'
+    color: '#30d158'
   },
   txActionExclude: {
-    color: '#ef4444'
+    color: '#ff453a'
   },
   typeSelectBtn: {
     flex: 1,
@@ -1364,8 +1364,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   typeSelectBtnActive: {
-    backgroundColor: '#8b5cf6',
-    borderColor: '#8b5cf6',
+    backgroundColor: '#ffffff',
+    borderColor: '#ffffff',
   },
   typeSelectBtnText: {
     color: '#9ca3af',
@@ -1373,7 +1373,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   typeSelectBtnTextActive: {
-    color: '#fff',
+    color: '#000000',
   },
   checkbox: {
     width: 16,
@@ -1386,8 +1386,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.3)',
   },
   checkboxChecked: {
-    backgroundColor: '#8b5cf6',
-    borderColor: '#8b5cf6',
+    backgroundColor: '#ffffff',
+    borderColor: '#ffffff',
   },
   footerNav: {
     position: 'absolute',
@@ -1395,7 +1395,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 60,
-    backgroundColor: '#0c0a17',
+    backgroundColor: '#000000',
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.05)',
     flexDirection: 'row',
@@ -1411,7 +1411,7 @@ const styles = StyleSheet.create({
   },
   footerItemActive: {
     borderTopWidth: 2,
-    borderTopColor: '#8b5cf6'
+    borderTopColor: '#ffffff'
   },
   footerText: {
     fontSize: 11,
@@ -1419,7 +1419,7 @@ const styles = StyleSheet.create({
     color: '#9ca3af'
   },
   footerTextActive: {
-    color: '#8b5cf6',
+    color: '#ffffff',
     fontWeight: '700'
   }
 });

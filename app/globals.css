@@ -1,34 +1,34 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
 
 :root {
-  /* Colors - Modern Deep Dark Theme */
-  --bg-base: #08070d;
-  --bg-surface: rgba(20, 18, 33, 0.6);
-  --bg-surface-hover: rgba(30, 28, 48, 0.85);
-  --border-color: rgba(255, 255, 255, 0.08);
-  --border-color-active: rgba(139, 92, 246, 0.4);
+  /* Colors - Modern Minimalist Dark Theme */
+  --bg-base: #000000;
+  --bg-surface: #121212;
+  --bg-surface-hover: #1c1c1e;
+  --border-color: rgba(255, 255, 255, 0.04);
+  --border-color-active: rgba(255, 255, 255, 0.2);
   
-  --color-text-primary: #f3f4f6;
-  --color-text-secondary: #9ca3af;
-  --color-text-muted: #6b7280;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #8e8e93;
+  --color-text-muted: #636366;
   
-  --color-primary: #8b5cf6; /* Violet */
-  --color-primary-glow: rgba(139, 92, 246, 0.15);
-  --color-success: #10b981; /* Emerald */
-  --color-success-glow: rgba(16, 185, 129, 0.15);
-  --color-danger: #ef4444; /* Rose Red */
-  --color-danger-glow: rgba(239, 68, 68, 0.15);
-  --color-warning: #f59e0b; /* Amber */
+  --color-primary: #ffffff; /* Monochrome Active */
+  --color-primary-glow: rgba(255, 255, 255, 0.08);
+  --color-success: #30d158; /* iOS Green */
+  --color-success-glow: rgba(48, 209, 88, 0.15);
+  --color-danger: #ff453a; /* iOS Red */
+  --color-danger-glow: rgba(255, 69, 58, 0.15);
+  --color-warning: #ff9f0a; /* iOS Amber */
   
   --font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 0 24px rgba(139, 92, 246, 0.2);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 12px rgba(255, 255, 255, 0.05);
   
   --radius-sm: 8px;
-  --radius-md: 16px;
-  --radius-lg: 24px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
 }
 
 * {
@@ -49,9 +49,6 @@ html, body {
 }
 
 body {
-  background-image: 
-    radial-gradient(circle at 10% 20%, rgba(139, 92, 246, 0.08) 0%, transparent 40%),
-    radial-gradient(circle at 90% 80%, rgba(16, 185, 129, 0.05) 0%, transparent 40%);
   background-attachment: fixed;
 }
 
@@ -79,8 +76,6 @@ h1, h2, h3, h4 {
 /* Premium Card - Glassmorphism */
 .card {
   background: var(--bg-surface);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   padding: 1.25rem;
@@ -92,7 +87,7 @@ h1, h2, h3, h4 {
 }
 
 .card:hover {
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 .card-title {
@@ -143,11 +138,11 @@ h1, h2, h3, h4 {
   height: 100%;
   border-radius: 999px;
   transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-  background: linear-gradient(90deg, var(--color-primary), var(--color-success));
+  background: var(--color-primary);
 }
 
 .progress-bar.danger {
-  background: linear-gradient(90deg, var(--color-danger), #ff8a8a);
+  background: var(--color-danger);
 }
 
 /* Flex utilities */
@@ -162,7 +157,7 @@ h1, h2, h3, h4 {
 
 /* Buttons & Inputs */
 .input {
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   color: var(--color-text-primary);
@@ -173,8 +168,7 @@ h1, h2, h3, h4 {
 }
 
 .input:focus {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px var(--color-primary-glow);
+  border-color: var(--border-color-active);
 }
 
 .btn {
@@ -193,14 +187,14 @@ h1, h2, h3, h4 {
 
 .btn-primary {
   background: var(--color-primary);
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
+  color: #000000;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
 
 .btn-primary:hover {
-  background: #7c3aed;
+  background: #e5e5e7;
   transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(139, 92, 246, 0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .btn-primary:active {
@@ -224,7 +218,7 @@ h1, h2, h3, h4 {
 }
 
 .btn-danger:hover {
-  background: #dc2626;
+  background: #e03b30;
 }
 
 .btn-icon {
@@ -483,7 +477,7 @@ h1, h2, h3, h4 {
   bottom: 0;
   left: 0;
   right: 0;
-  background: rgba(13, 11, 23, 0.85);
+  background: rgba(0, 0, 0, 0.85);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-top: 1px solid var(--border-color);
