@@ -1029,8 +1029,8 @@ const styles = StyleSheet.create({
     marginRight: 6
   },
   syncDotActive: {
-    backgroundColor: '#10b981',
-    shadowColor: '#10b981',
+    backgroundColor: '#ffffff',
+    shadowColor: '#ffffff',
     shadowRadius: 4,
     shadowOpacity: 0.5
   },
@@ -1089,7 +1089,7 @@ const styles = StyleSheet.create({
     borderRadius: 3
   },
   progressBarDanger: {
-    backgroundColor: '#ff453a'
+    backgroundColor: '#8e8e93'
   },
   cardMeta: {
     flexDirection: 'row',
@@ -1163,10 +1163,10 @@ const styles = StyleSheet.create({
     marginRight: 10
   },
   txDebit: {
-    backgroundColor: '#ff453a'
+    backgroundColor: '#3a3a3c'
   },
   txCredit: {
-    backgroundColor: '#30d158'
+    backgroundColor: '#ffffff'
   },
   txMain: {
     flex: 1,
@@ -1207,10 +1207,10 @@ const styles = StyleSheet.create({
     fontWeight: '700'
   },
   amountDebit: {
-    color: '#ff453a'
+    color: '#8e8e93'
   },
   amountCredit: {
-    color: '#30d158'
+    color: '#ffffff'
   },
   txDelete: {
     marginTop: 4
@@ -1287,15 +1287,15 @@ const styles = StyleSheet.create({
     marginTop: 2
   },
   btnDeleteRule: {
-    backgroundColor: 'rgba(255, 69, 58, 0.08)',
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 69, 58, 0.15)',
+    borderColor: 'rgba(255, 255, 255, 0.06)',
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 6
   },
   btnDeleteRuleText: {
-    color: '#ff453a',
+    color: '#ffffff',
     fontSize: 11,
     fontWeight: '600'
   },
@@ -1325,14 +1325,14 @@ const styles = StyleSheet.create({
     marginBottom: 6
   },
   syncErrorText: {
-    color: '#ff453a',
+    color: '#8e8e93',
     fontSize: 12,
     fontWeight: '600',
     marginBottom: 8,
     textAlign: 'center'
   },
   syncSuccessText: {
-    color: '#30d158',
+    color: '#ffffff',
     fontSize: 11,
     fontWeight: '500',
     marginBottom: 8,
@@ -1349,10 +1349,10 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
   txActionInclude: {
-    color: '#30d158'
+    color: '#ffffff'
   },
   txActionExclude: {
-    color: '#ff453a'
+    color: '#8e8e93'
   },
   typeSelectBtn: {
     flex: 1,
