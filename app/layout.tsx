@@ -2,12 +2,12 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "FlowFinance - Credit Line Manager",
+  title: "Aarush's Wallet - Credit Line Manager",
   description: "Track your baseline balance, parse transaction SMS messages, and manage UPI renaming rules.",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "FlowFinance"
+    title: "Aarush's Wallet"
   }
 };
 

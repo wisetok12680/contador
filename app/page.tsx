@@ -438,14 +438,9 @@ export default function Home() {
             <Wallet size={20} />
           </div>
           <div>
-            <h1 className="text-xl font-bold">FlowFinance</h1>
+            <h1 className="text-xl font-bold">Aarush's Wallet</h1>
             <p className="text-xs text-muted">Credit Manager</p>
           </div>
-        </div>
-
-        <div className="sync-indicator">
-          <span className={`sync-dot ${isSynced ? 'active' : 'inactive'}`}></span>
-          <span className="text-xs font-medium">{isSynced ? 'Live Synced' : 'Syncing...'}</span>
         </div>
       </header>
 

@@ -318,14 +318,14 @@ export default function App() {
         PermissionsAndroid.PERMISSIONS.READ_SMS,
         {
           title: 'SMS Permission Required',
-          message: 'FlowFinance needs access to read your SMS to detect and import your bank transaction alerts.',
+          message: "Aarush's Wallet needs access to read your SMS to detect and import your bank transaction alerts.",
           buttonNeutral: 'Ask Me Later',
           buttonNegative: 'Cancel',
           buttonPositive: 'OK'
         }
       );
       if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-        Alert.alert('Permission Denied', 'FlowFinance requires SMS read permission to sync transactions.');
+        Alert.alert('Permission Denied', "Aarush's Wallet requires SMS read permission to sync transactions.");
         return;
       }
     } catch (err) {
@@ -577,12 +577,8 @@ export default function App() {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.headerTitle}>FlowFinance</Text>
+          <Text style={styles.headerTitle}>Aarush's Wallet</Text>
           <Text style={styles.headerSubtitle}>Native Mobile Client</Text>
-        </View>
-        <View style={styles.syncStatus}>
-          <View style={[styles.syncDot, isOnlineSynced ? styles.syncDotActive : styles.syncDotInactive]} />
-          <Text style={styles.syncText}>{isOnlineSynced ? 'Dashboard Live' : 'Pending'}</Text>
         </View>
       </View>
 
